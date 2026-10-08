@@ -4,30 +4,7 @@ import { redactSecrets } from "../security";
 import { getConfig } from "../config";
 import { log } from "../log";
 import { AetherError } from "../errors";
-
-function userSafeProviderError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : "provider error";
-  if (/api key|incorrect api key|invalid_api_key|401/i.test(raw)) {
-    return "The AI service rejected the configured credentials.";
-  }
-  if (/rate limit|429/i.test(raw)) {
-    return "The AI service is rate limiting requests. Try again shortly.";
-  }
-  if (/timeout|aborted|abort/i.test(raw)) {
-    return "The AI service timed out.";
-  }
-  if (/model/i.test(raw) && /not found|does not exist|invalid/i.test(raw)) {
-    return "The configured AI model is not available. Set AI_MODEL_DEFAULT to a model your account can use.";
-  }
-  return "The AI service is temporarily unavailable. Please try again.";
-}
-
-function mergeAbort(params: GenerateParams): AbortSignal {
-  const timeout = params.timeoutMs ?? getConfig().timeoutMs;
-  const t = AbortSignal.timeout(timeout);
-  if (!params.abort) return t;
-  return AbortSignal.any([params.abort, t]);
-}
+import { backoff, isTransientProviderError, mergeAbort, userSafeProviderError } from "./shared";
 
 export function createOpenAIProvider(): ModelProvider | null {
   const cfg = getConfig();
@@ -53,10 +30,8 @@ export function createOpenAIProvider(): ModelProvider | null {
     async *generate(params: GenerateParams): AsyncIterable<GenerateChunk> {
       const started = Date.now();
       const model =
-        params.model && params.model !== "aether-engine-v1"
-          ? params.model
-          : cfg.models.default;
-      const signal = mergeAbort(params);
+        params.model && params.model !== "aether-engine-v1" ? params.model : cfg.models.default;
+      const signal = mergeAbort(params.timeoutMs, params.abort);
       const input = params.assembled.messages
         .filter((m) => m.role === "user" || m.role === "assistant")
         .map((m) => ({
@@ -126,11 +101,8 @@ export function createOpenAIProvider(): ModelProvider | null {
             return;
           }
           const msg = e instanceof Error ? e.message : "provider error";
-          const transient = /429|500|502|503|504|ECONNRESET|ETIMEDOUT|network/i.test(msg);
-          if (transient && attempt <= max + 1) {
-            const delay = Math.min(2000, 250 * 2 ** (attempt - 1));
-            log("warn", "openai.retry", { attempt, delay });
-            await new Promise((r) => setTimeout(r, delay));
+          if (isTransientProviderError(msg) && attempt <= max + 1) {
+            await backoff(attempt);
             continue;
           }
           log("error", "openai.generate_failed", { attempt });

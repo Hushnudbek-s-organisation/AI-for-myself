@@ -128,7 +128,7 @@ function generalReply(msg: string, params: GenerateParams): string {
   return [
     `**${mode}**${skill ? ` · ${skill}` : ""}`,
     "",
-    "Here’s a working response from the **development fallback** (not a production language model). Configure OPENAI_API_KEY on the server with AI_MOCK_MODE=false for the real provider.",
+    "Here’s a working response from the **development fallback** (not a production language model). Set OPENAI_API_KEY, GEMINI_API_KEY, or XAI_API_KEY with AI_MOCK_MODE=false for a live provider.",
     "",
     thinkingGuide(body, params),
   ].join("\n");

@@ -22,12 +22,15 @@ export default function DocsPage() {
   "message": "Check my essay",
   "mode": "essay",
   "skill": "essay-coach",
+  "model": "gpt-6-luna",
   "conversationId": "optional",
   "context": { "degree": "Bachelor", "field": "CS" },
   "stream": false
 }`}</pre>
           <p className="mt-2 text-sm text-mist-400">
-            <code>context</code> is untrusted, size-limited, and never promoted to system instructions.
+            <code>context</code> is untrusted, size-limited, and never promoted to system instructions.{" "}
+            <code>model</code> selects ChatGPT 6 Luna (<code>gpt-6-luna</code>), Gemini, or Grok. The browser and
+            third-party apps never call providers directly.
           </p>
           <pre className="mt-3 overflow-auto rounded-xl border border-white/10 bg-ink-900 p-4 font-mono text-xs">{`{
   "id": "msg_…",
@@ -55,7 +58,7 @@ export default function DocsPage() {
             <li>GET/POST /v1/skills · PATCH/DELETE /v1/skills/:id · POST /v1/skills/builder</li>
             <li>GET/POST /v1/prompts</li>
             <li>POST /v1/files</li>
-            <li>GET /v1/models · GET /v1/usage · GET/POST /v1/projects · GET/POST /v1/keys</li>
+            <li>GET /v1/models · GET /v1/usage · GET/POST /v1/projects · GET/POST /v1/keys · GET/POST /v1/rules</li>
           </ul>
         </section>
         <section>

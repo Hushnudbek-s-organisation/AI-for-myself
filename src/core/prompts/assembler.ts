@@ -16,6 +16,20 @@ import type {
   PromptLayer,
   Skill,
 } from "../types";
+import { MAX_CONTEXT_CHARS, MAX_FILE_CHARS, MAX_HISTORY_MESSAGES } from "../types";
+
+function clippedHistory(history: ChatMessage[]): ChatMessage[] {
+  const sliced = history
+    .filter((h) => h.role === "user" || h.role === "assistant")
+    .slice(-MAX_HISTORY_MESSAGES)
+    .map((m) => ({ ...m }));
+  let total = sliced.reduce((n, m) => n + (m.content?.length || 0), 0);
+  while (sliced.length > 2 && total > MAX_CONTEXT_CHARS) {
+    const gone = sliced.shift();
+    total -= gone?.content.length ?? 0;
+  }
+  return sliced;
+}
 
 export interface AssembleInput {
   mode: ModeDefinition;
@@ -85,7 +99,10 @@ export function assemblePrompt(input: AssembleInput): AssembledPrompt {
 
   if (input.attachments.length) {
     const docs = input.attachments
-      .map((a) => `${a.filename} (${a.mime}):\n${a.extractedText || "(binary / no text)"}`)
+      .map((a) => {
+        const text = (a.extractedText || "(binary / no text)").slice(0, MAX_FILE_CHARS);
+        return `${a.filename} (${a.mime}):\n${text}`;
+      })
       .join("\n\n");
     layers.push({
       layer: "document",
@@ -101,7 +118,7 @@ export function assemblePrompt(input: AssembleInput): AssembledPrompt {
   ].join("\n\n---\n\n");
 
   const messages: AssembledPrompt["messages"] = [];
-  for (const h of input.history) {
+  for (const h of clippedHistory(input.history)) {
     if (h.role === "user" || h.role === "assistant") {
       messages.push({
         role: h.role,

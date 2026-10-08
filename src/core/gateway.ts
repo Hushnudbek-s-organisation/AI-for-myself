@@ -21,7 +21,7 @@ import type {
   Usage,
 } from "./types";
 import { MAX_EXTERNAL_CONTEXT_CHARS, MAX_HISTORY_MESSAGES, MAX_TOOL_CALLS } from "./types";
-import { conversations, files, instructions, messages, projects, skills, usage } from "@/db/repos";
+import { conversations, files, instructions, messages, projects, rules, skills, usage } from "@/db/repos";
 import { parseJson } from "@/db/index";
 
 const inflight = new Set<string>();
@@ -126,9 +126,12 @@ export async function* runChat(
     const modeId = (req.mode || skill?.mode || conv.mode || "general") as ModeId;
     const mode = getMode(modeId);
     const resolved = resolveProvider(req.model || conv.model);
-    const { provider, mock } = resolved;
+    const { provider, mock, catalogId } = resolved;
     const model = resolved.model;
-    enforceProject(auth, modeId, skill, model);
+    enforceProject(auth, modeId, skill, catalogId);
+    if (req.model && catalogId !== conv.model) {
+      conversations.update(conv.id, auth.userId, { model: catalogId });
+    }
 
     if (req.regenerateOf) {
       const original = messages.get(req.regenerateOf);
@@ -207,12 +210,13 @@ export async function* runChat(
     const assembled = assemblePrompt({
       mode,
       skill,
+      developerRules: rules.enabledText(),
       userCustomInstructions: instructions.asText(auth.userId),
       history: historyBefore,
       userMessage: req.message,
       attachments,
       externalContext: req.context,
-      model,
+      model: catalogId,
       toolResultText: toolTexts.join("\n\n") || undefined,
     });
 
@@ -319,7 +323,7 @@ export async function* runChat(
       mode: modeId,
       skillId: skill?.id ?? null,
       skillVersion: skill?.version ?? null,
-      model,
+      model: catalogId,
       lastMessage: full.slice(0, 180),
     });
 

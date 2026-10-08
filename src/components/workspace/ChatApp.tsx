@@ -30,6 +30,14 @@ import type { ChatMessage, Conversation, ModeId, SavedPrompt, Skill } from "@/co
 
 type User = { id: string; email?: string; name?: string; role?: string };
 
+type PublicModel = {
+  id: string;
+  label: string;
+  provider: string;
+  available: boolean;
+  mock?: boolean;
+};
+
 const NAV = [
   { href: "/chat", label: "Chats" },
   { href: "/skills", label: "Skills" },
@@ -63,6 +71,8 @@ export function ChatApp({ initialId }: { initialId?: string }) {
   const [renameVal, setRenameVal] = useState("");
   const [visible, setVisible] = useState<Record<string, unknown> | null>(null);
   const [mockAi, setMockAi] = useState(false);
+  const [model, setModel] = useState("");
+  const [models, setModels] = useState<PublicModel[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -82,16 +92,20 @@ export function ChatApp({ initialId }: { initialId?: string }) {
       me = await fetch("/api/v1/auth/me").then((r) => r.json());
     }
     setUser(me.user);
-    const [c, s, p, h] = await Promise.all([
+    const [c, s, p, h, m] = await Promise.all([
       fetch("/api/v1/conversations").then((r) => r.json()),
       fetch("/api/v1/skills").then((r) => r.json()),
       fetch("/api/v1/prompts").then((r) => r.json()),
       fetch("/api/health").then((r) => r.json()).catch(() => ({})),
+      fetch("/api/v1/models").then((r) => r.json()).catch(() => ({})),
     ]);
     setMockAi(Boolean(h?.ai?.mock));
     setConversations(c.conversations || []);
     setSkills(s.skills || []);
     setPrompts(p.prompts || []);
+    const catalog: PublicModel[] = m.models || [];
+    setModels(catalog);
+    setModel((prev) => prev || m.defaultModel || catalog.find((x) => x.available)?.id || "");
   }, []);
 
   useEffect(() => {
@@ -110,6 +124,7 @@ export function ChatApp({ initialId }: { initialId?: string }) {
         setMessages(d.messages || []);
         if (d.conversation?.mode) setMode(d.conversation.mode);
         if (d.conversation?.skillId) setSkillId(d.conversation.skillId);
+        if (d.conversation?.model) setModel(d.conversation.model);
         const last = [...(d.messages || [])].reverse().find((m: ChatMessage) => m.role === "assistant");
         if (last?.metadata && typeof last.metadata === "object" && "visible" in last.metadata) {
           setVisible((last.metadata as { visible: Record<string, unknown> }).visible);
@@ -131,7 +146,7 @@ export function ChatApp({ initialId }: { initialId?: string }) {
     const r = await fetch("/api/v1/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, skillId: skillId || undefined }),
+      body: JSON.stringify({ mode, skillId: skillId || undefined, model: model || undefined }),
     }).then((x) => x.json());
     setActiveId(r.conversation.id);
     setMessages([]);
@@ -171,6 +186,7 @@ export function ChatApp({ initialId }: { initialId?: string }) {
           conversationId: activeId,
           mode,
           skill: skillId || undefined,
+          model: model || undefined,
           files,
           editOf,
         }),
@@ -456,6 +472,20 @@ export function ChatApp({ initialId }: { initialId?: string }) {
                 </option>
               ))}
           </select>
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="max-w-[14rem] rounded-full border border-iris-400/25 bg-ink-850 px-3 py-1.5 text-sm outline-none"
+            title="Model — routed through Aether, never called from the browser"
+          >
+            {models.length === 0 && <option value="">Default model</option>}
+            {models.map((m) => (
+              <option key={`${m.provider}-${m.id}`} value={m.id} disabled={!m.available && !mockAi}>
+                {m.label}
+                {!m.available && !m.mock ? " (key not set)" : ""}
+              </option>
+            ))}
+          </select>
           <div className="hidden text-xs text-mist-400 sm:block">
             {activeSkill ? `${activeSkill.name} v${activeSkill.version}` : "General"} · {mode}
           </div>
@@ -572,7 +602,7 @@ export function ChatApp({ initialId }: { initialId?: string }) {
             <div className="border-t border-white/5 px-4 py-3">
               {mockAi && (
                 <div className="mx-auto mb-2 max-w-3xl rounded-lg border border-gold-400/30 bg-gold-400/10 px-3 py-2 text-xs text-gold-300">
-                  Development fallback is on (AI_MOCK_MODE). This is not a production language model. Set OPENAI_API_KEY and AI_MOCK_MODE=false for the real provider.
+                  Development fallback is on (AI_MOCK_MODE). Replies are not from ChatGPT, Gemini, or Grok. Set a provider key and AI_MOCK_MODE=false for live models.
                 </div>
               )}
               {error && <div className="mx-auto mb-2 max-w-3xl text-sm text-red-300">{error}</div>}

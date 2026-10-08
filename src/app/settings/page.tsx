@@ -8,18 +8,26 @@ export default function SettingsPage() {
   const [style, setStyle] = useState("");
   const [language, setLanguage] = useState("");
   const [saved, setSaved] = useState(false);
+  const [ai, setAi] = useState<{
+    mock?: boolean;
+    configured?: boolean;
+    provider?: string;
+    providers?: { openai: boolean; gemini: boolean; grok: boolean };
+  } | null>(null);
 
   useEffect(() => {
     fetch("/api/v1/auth/guest", { method: "POST" }).then(() =>
-      fetch("/api/v1/settings")
-        .then((r) => r.json())
-        .then((d) => {
+      Promise.all([fetch("/api/v1/settings").then((r) => r.json()), fetch("/api/health").then((r) => r.json())]).then(
+        ([d, h]) => {
           const c = d.customInstructions;
-          if (!c) return;
-          setAbout(c.about_user || "");
-          setStyle(c.response_style || "");
-          setLanguage(c.language || "");
-        }),
+          if (c) {
+            setAbout(c.about_user || "");
+            setStyle(c.response_style || "");
+            setLanguage(c.language || "");
+          }
+          setAi(h.ai || null);
+        },
+      ),
     );
   }, []);
 
@@ -33,12 +41,36 @@ export default function SettingsPage() {
     setSaved(true);
   }
 
+  const providers = [
+    { id: "openai", label: "OpenAI / ChatGPT 6 Luna", ok: Boolean(ai?.providers?.openai) },
+    { id: "gemini", label: "Gemini", ok: Boolean(ai?.providers?.gemini) },
+    { id: "grok", label: "Grok (xAI)", ok: Boolean(ai?.providers?.grok) },
+  ];
+
   return (
     <AppFrame title="Settings">
       <p className="text-mist-400">
-        Custom instructions sit below security, mode, and skill rules. They never override platform policy.
+        Custom instructions sit below security, mode, and skill rules. They never override platform policy. Keys stay on
+        the server.
       </p>
-      <form onSubmit={save} className="mt-6 max-w-xl space-y-4">
+
+      <h2 className="mt-8 font-serif text-2xl">Providers</h2>
+      <p className="mt-1 text-sm text-mist-400">
+        Status only — never paste API keys in the browser. Configure OPENAI_API_KEY, GEMINI_API_KEY, and XAI_API_KEY on
+        the server.
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        {providers.map((p) => (
+          <div key={p.id} className="rounded-2xl border border-white/5 p-4">
+            <div className="text-xs uppercase tracking-wider text-mist-400">{p.label}</div>
+            <div className={`mt-1 text-sm ${p.ok ? "text-gold-300" : "text-mist-400"}`}>
+              {ai?.mock ? "Mock mode (not live)" : p.ok ? "Configured" : "Key not set"}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <form onSubmit={save} className="mt-8 max-w-xl space-y-4">
         <div>
           <label className="text-xs uppercase tracking-wider text-mist-400">What should Aether know about you?</label>
           <textarea className="mt-1 w-full rounded-xl border border-white/10 bg-ink-850 p-3" rows={4} value={about} onChange={(e) => setAbout(e.target.value)} />

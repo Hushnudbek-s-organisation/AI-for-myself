@@ -2,7 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getConfig, publicAiStatus, requireRealProviderOrMock } from "./config";
 import { AetherError } from "./errors";
 
-const KEYS = ["AI_MOCK_MODE", "OPENAI_API_KEY", "ALLOW_DEMO_ACCOUNTS"] as const;
+const KEYS = [
+  "AI_MOCK_MODE",
+  "OPENAI_API_KEY",
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "XAI_API_KEY",
+  "GROK_API_KEY",
+  "ALLOW_DEMO_ACCOUNTS",
+] as const;
 
 describe("config", () => {
   const snap: Record<string, string | undefined> = {};
@@ -29,7 +37,22 @@ describe("config", () => {
   it("refuses silent fallback when mock is off and no key", () => {
     process.env.AI_MOCK_MODE = "false";
     delete process.env.OPENAI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
+    delete process.env.XAI_API_KEY;
+    delete process.env.GROK_API_KEY;
     expect(() => requireRealProviderOrMock()).toThrow(AetherError);
+  });
+
+  it("accepts Gemini-only or Grok-only configuration", () => {
+    process.env.AI_MOCK_MODE = "false";
+    delete process.env.OPENAI_API_KEY;
+    process.env.GEMINI_API_KEY = "gem-test";
+    expect(requireRealProviderOrMock()).toBe("gemini");
+    expect(publicAiStatus().providers.gemini).toBe(true);
+    delete process.env.GEMINI_API_KEY;
+    process.env.XAI_API_KEY = "xai-test";
+    expect(requireRealProviderOrMock()).toBe("grok");
   });
 
   it("does not allow demo accounts when flag is false", () => {

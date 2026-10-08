@@ -58,6 +58,9 @@ export default function DeveloperPage() {
         <Link href="/developer/playground" className="rounded-full border border-white/10 px-4 py-2">
           Playground
         </Link>
+        <Link href="/developer/rules" className="rounded-full border border-white/10 px-4 py-2">
+          Rules
+        </Link>
         <Link href="/docs" className="rounded-full border border-white/10 px-4 py-2">
           API documentation
         </Link>

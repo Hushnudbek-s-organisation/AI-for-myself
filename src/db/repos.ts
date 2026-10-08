@@ -924,3 +924,81 @@ export const usage = {
     return { totals, bySkill, byMode, recent };
   },
 };
+
+export interface RuleRow {
+  id: string;
+  layer: string;
+  name: string;
+  content: string;
+  enabled: number;
+  version: number;
+}
+
+const MUTABLE_RULE_LAYERS = new Set(["developer", "output"]);
+
+export const rules = {
+  list(): RuleRow[] {
+    return rows<RuleRow>("SELECT * FROM rules ORDER BY layer, name");
+  },
+  get(id: string): RuleRow | undefined {
+    return row<RuleRow>("SELECT * FROM rules WHERE id = ?", [id]);
+  },
+  enabledText(): string {
+    const list = rows<RuleRow>(
+      "SELECT * FROM rules WHERE enabled = 1 AND layer IN ('developer', 'output') ORDER BY layer, name",
+    );
+    if (!list.length) return "";
+    return list.map((r) => `${r.layer.toUpperCase()} RULE — ${r.name} (v${r.version}):\n${r.content}`).join("\n\n");
+  },
+  create(input: { layer: string; name: string; content: string }): RuleRow {
+    if (!MUTABLE_RULE_LAYERS.has(input.layer)) {
+      throw new Error("layer_locked");
+    }
+    const rec: RuleRow = {
+      id: makeId("rule"),
+      layer: input.layer,
+      name: input.name,
+      content: input.content,
+      enabled: 1,
+      version: 1,
+    };
+    run("INSERT INTO rules (id, layer, name, content, enabled, version) VALUES (?, ?, ?, ?, ?, ?)", [
+      rec.id,
+      rec.layer,
+      rec.name,
+      rec.content,
+      rec.enabled,
+      rec.version,
+    ]);
+    return rec;
+  },
+  update(
+    id: string,
+    patch: Partial<{ name: string; content: string; enabled: boolean }>,
+  ): RuleRow | undefined {
+    const cur = rules.get(id);
+    if (!cur) return undefined;
+    if (!MUTABLE_RULE_LAYERS.has(cur.layer)) return undefined;
+    const next: RuleRow = {
+      ...cur,
+      name: patch.name ?? cur.name,
+      content: patch.content ?? cur.content,
+      enabled: patch.enabled === undefined ? cur.enabled : patch.enabled ? 1 : 0,
+      version: patch.content && patch.content !== cur.content ? cur.version + 1 : cur.version,
+    };
+    run("UPDATE rules SET name=?, content=?, enabled=?, version=? WHERE id=?", [
+      next.name,
+      next.content,
+      next.enabled,
+      next.version,
+      id,
+    ]);
+    return next;
+  },
+  remove(id: string): boolean {
+    const cur = rules.get(id);
+    if (!cur || !MUTABLE_RULE_LAYERS.has(cur.layer)) return false;
+    run("DELETE FROM rules WHERE id = ?", [id]);
+    return true;
+  },
+};

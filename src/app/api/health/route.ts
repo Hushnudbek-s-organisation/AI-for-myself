@@ -25,6 +25,7 @@ export async function GET() {
         configured: ai.configured,
         mock: ai.mock,
         model: ai.model,
+        providers: ai.providers,
       },
       demoAccounts: cfg.allowDemoAccounts,
     });

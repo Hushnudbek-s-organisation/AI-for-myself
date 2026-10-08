@@ -33,8 +33,8 @@ export default function Landing() {
           An AI operating environment.
         </h1>
         <p className="mt-6 max-w-xl text-lg text-mist-400">
-          Chat like a modern assistant. Then go further: versioned skills, prompt libraries, trusted tools, and a
-          public API that shares the same core. Connect another website without rewriting the brain.
+          Chat like a modern assistant. Pick ChatGPT 6 Luna, Gemini, or Grok — the browser never talks to those APIs.
+          Versioned skills, prompt libraries, trusted tools, and a public API share the same core.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link href="/chat" className="rounded-full bg-iris-500 px-5 py-2.5 text-sm font-medium text-white shadow-glow">
