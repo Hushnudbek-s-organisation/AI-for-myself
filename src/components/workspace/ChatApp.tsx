@@ -36,6 +36,10 @@ type PublicModel = {
   provider: string;
   available: boolean;
   mock?: boolean;
+  /** Resolved wire id for the configured key (never the API key). */
+  wireModel?: string | null;
+  wireSource?: "env" | "discovery" | "unresolved";
+  note?: string;
 };
 
 const NAV = [
@@ -79,6 +83,10 @@ export function ChatApp({ initialId }: { initialId?: string }) {
   const recRef = useRef<SpeechRecognition | null>(null);
 
   const activeSkill = skills.find((s) => s.id === skillId || s.slug === skillId);
+  const selectedModel = models.find((m) => m.id === model);
+  // A key with no usable model: say so plainly instead of failing mid-answer.
+  const modelProblem =
+    !mockAi && selectedModel?.available && !selectedModel.wireModel ? selectedModel.note || "" : "";
 
   const grouped = useMemo(
     () => groupConversations(conversations.filter((c) => !search || c.title.toLowerCase().includes(search.toLowerCase()))),
@@ -105,7 +113,13 @@ export function ChatApp({ initialId }: { initialId?: string }) {
     setPrompts(p.prompts || []);
     const catalog: PublicModel[] = m.models || [];
     setModels(catalog);
-    setModel((prev) => prev || m.defaultModel || catalog.find((x) => x.available)?.id || "");
+    // Prefer the server's default provider, but never land on one whose key is missing.
+    const preferred =
+      catalog.find((x) => x.id === m.defaultModel && x.available)?.id ??
+      catalog.find((x) => x.available)?.id ??
+      m.defaultModel ??
+      "";
+    setModel((prev) => prev || preferred);
   }, []);
 
   useEffect(() => {
@@ -478,11 +492,17 @@ export function ChatApp({ initialId }: { initialId?: string }) {
             className="max-w-[14rem] rounded-full border border-iris-400/25 bg-ink-850 px-3 py-1.5 text-sm outline-none"
             title="Model — routed through Aether, never called from the browser"
           >
-            {models.length === 0 && <option value="">Default model</option>}
+            {models.length === 0 && <option value="">Default provider</option>}
             {models.map((m) => (
-              <option key={`${m.provider}-${m.id}`} value={m.id} disabled={!m.available && !mockAi}>
+              <option
+                key={`${m.provider}-${m.id}`}
+                value={m.id}
+                disabled={!m.available && !mockAi}
+                title={m.note || "Routed through Aether — the browser never calls the provider"}
+              >
                 {m.label}
                 {!m.available && !m.mock ? " (key not set)" : ""}
+                {m.available && !m.mock && !m.wireModel ? " (no free model resolved)" : ""}
               </option>
             ))}
           </select>
@@ -605,6 +625,11 @@ export function ChatApp({ initialId }: { initialId?: string }) {
                   Development fallback is on (AI_MOCK_MODE). Replies are not from ChatGPT, Gemini, or Grok. Set a provider key and AI_MOCK_MODE=false for live models.
                 </div>
               )}
+              {!mockAi && modelProblem && (
+                <div className="mx-auto mb-2 max-w-3xl rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-200">
+                  {modelProblem}
+                </div>
+              )}
               {error && <div className="mx-auto mb-2 max-w-3xl text-sm text-red-300">{error}</div>}
               {files.length > 0 && (
                 <div className="mx-auto mb-2 flex max-w-3xl flex-wrap gap-2">
@@ -687,7 +712,20 @@ export function ChatApp({ initialId }: { initialId?: string }) {
                 <Row k="Custom instructions" v={visible?.customInstructions ? "Enabled" : "Off"} />
                 <Row k="Tools" v={(activeSkill?.allowedTools || []).join(", ") || "Default"} />
                 <Row k="Files" v={files.map((f) => f.filename).join(", ") || "None"} />
-                <Row k="Model" v={String(visible?.model || "Aether Engine")} />
+                <Row k="Provider" v={selectedModel?.label || String(visible?.model || "Aether Engine")} />
+                <Row k="Wire model" v={selectedModel?.wireModel || (mockAi ? "aether-engine-v1" : "Resolving…")} />
+                <Row
+                  k="Model source"
+                  v={
+                    mockAi
+                      ? "AI_MOCK_MODE (not a real model)"
+                      : selectedModel?.wireSource === "env"
+                        ? `${selectedModel?.wireSource} override`
+                        : selectedModel?.wireSource === "discovery"
+                          ? "picked from this key's model list"
+                          : selectedModel?.note || "unresolved"
+                  }
+                />
               </dl>
               <p className="mt-6 text-xs leading-relaxed text-mist-400">
                 Internal security prompts are never shown here. This panel is what you configured — not the platform’s private

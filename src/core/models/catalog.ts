@@ -1,176 +1,102 @@
 import type { ModelTier } from "../types";
-import { getConfig } from "../config";
+import { PROVIDER_LABEL, type LiveProviderId } from "../config";
 
 export type ProviderId = "openai" | "gemini" | "grok" | "mock";
 
+/**
+ * The chat picker speaks provider names only: ChatGPT / Gemini / Grok.
+ * Wire ids (gpt-*, gemini-*, grok-*) are resolved server-side from the live
+ * model list for the configured key, or from an optional env override.
+ */
+export type PickerId = "chatgpt" | "gemini" | "grok";
+
+/** What gets stored on a conversation / echoed in the API. */
+export type CatalogId = PickerId | "aether-engine-v1";
+
+export const PICKER_IDS: PickerId[] = ["chatgpt", "gemini", "grok"];
+
+export const PICKER_FOR_PROVIDER: Record<LiveProviderId, PickerId> = {
+  openai: "chatgpt",
+  gemini: "gemini",
+  grok: "grok",
+};
+
+export const PROVIDER_FOR_PICKER: Record<PickerId, LiveProviderId> = {
+  chatgpt: "openai",
+  gemini: "gemini",
+  grok: "grok",
+};
+
 export interface CatalogModel {
-  id: string;
+  id: PickerId;
   label: string;
-  provider: Exclude<ProviderId, "mock">;
+  provider: LiveProviderId;
   tier: ModelTier;
   aliases: string[];
 }
 
-function pushUnique(list: CatalogModel[], item: CatalogModel) {
-  if (!item.id) return;
-  if (list.some((m) => m.id === item.id)) return;
-  list.push(item);
-}
-
-function idBelongsTo(id: string, provider: CatalogModel["provider"]): boolean {
-  const n = id.toLowerCase();
-  if (n.startsWith("gemini") || n.startsWith("gemma")) return provider === "gemini";
-  if (n.startsWith("grok") || n.startsWith("xai")) return provider === "grok";
-  return provider === "openai";
-}
-
 /**
- * Supported catalog IDs. Wire IDs can be remapped with env vars.
- * Do not treat this list as proof that an account has the model.
+ * Provider-level aliases only. Anything else a client sends is routed by prefix
+ * (see normalizeModelId) and never becomes a wire id — no model name is baked in.
  */
+const ALIASES: Record<PickerId, string[]> = {
+  chatgpt: ["chatgpt", "chat-gpt", "openai", "gpt"],
+  gemini: ["gemini", "google", "google-gemini", "gemini-flash"],
+  grok: ["grok", "xai", "x-ai"],
+};
+
+function normalize(raw?: string | null): string {
+  return (raw ?? "").trim().toLowerCase();
+}
+
+export function isPickerId(value: string): value is PickerId {
+  return (PICKER_IDS as string[]).includes(value);
+}
+
 export function catalog(): CatalogModel[] {
-  const c = getConfig();
-  const items: CatalogModel[] = [];
-  pushUnique(items, {
-    id: "gpt-6-luna",
-    label: "ChatGPT 6 Luna",
-    provider: "openai",
-    tier: "reasoning",
-    aliases: ["chatgpt-6-luna", "chatgpt 6 luna", "luna", "chatgpt-6"],
-  });
-  pushUnique(items, {
-    id: "gpt-6-astra",
-    label: "ChatGPT 6 Astra",
-    provider: "openai",
-    tier: "balanced",
-    aliases: ["gpt-6", "chatgpt-6-astra"],
-  });
-  if (idBelongsTo(c.models.default, "openai")) {
-    pushUnique(items, {
-      id: c.models.default,
-      label: `OpenAI (${c.models.default})`,
+  return [
+    {
+      id: "chatgpt",
+      label: PROVIDER_LABEL.openai,
       provider: "openai",
       tier: "balanced",
-      aliases: ["openai", "chatgpt"],
-    });
-  }
-  if (idBelongsTo(c.models.fast, "openai")) {
-    pushUnique(items, {
-      id: c.models.fast,
-      label: `OpenAI fast (${c.models.fast})`,
-      provider: "openai",
-      tier: "fast",
-      aliases: [],
-    });
-  }
-  if (idBelongsTo(c.models.reasoning, "openai")) {
-    pushUnique(items, {
-      id: c.models.reasoning,
-      label: `OpenAI reasoning (${c.models.reasoning})`,
-      provider: "openai",
-      tier: "reasoning",
-      aliases: [],
-    });
-  }
-  pushUnique(items, {
-    id: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash",
-    provider: "gemini",
-    tier: "fast",
-    aliases: ["gemini", "gemini-flash"],
-  });
-  pushUnique(items, {
-    id: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro",
-    provider: "gemini",
-    tier: "reasoning",
-    aliases: ["gemini-pro"],
-  });
-  if (idBelongsTo(c.gemini.flashModel, "gemini")) {
-    pushUnique(items, {
-      id: c.gemini.flashModel,
-      label: `Gemini flash (${c.gemini.flashModel})`,
-      provider: "gemini",
-      tier: "fast",
-      aliases: [],
-    });
-  }
-  if (idBelongsTo(c.gemini.proModel, "gemini")) {
-    pushUnique(items, {
-      id: c.gemini.proModel,
-      label: `Gemini pro (${c.gemini.proModel})`,
-      provider: "gemini",
-      tier: "reasoning",
-      aliases: [],
-    });
-  }
-  if (idBelongsTo(c.gemini.defaultModel, "gemini")) {
-    pushUnique(items, {
-      id: c.gemini.defaultModel,
-      label: `Gemini (${c.gemini.defaultModel})`,
+      aliases: ALIASES.chatgpt,
+    },
+    {
+      id: "gemini",
+      label: PROVIDER_LABEL.gemini,
       provider: "gemini",
       tier: "balanced",
-      aliases: [],
-    });
-  }
-  pushUnique(items, {
-    id: "grok-4.7",
-    label: "Grok 4.7",
-    provider: "grok",
-    tier: "reasoning",
-    aliases: ["grok", "xai"],
-  });
-  pushUnique(items, {
-    id: "grok-4",
-    label: "Grok 4",
-    provider: "grok",
-    tier: "balanced",
-    aliases: [],
-  });
-  if (idBelongsTo(c.grok.defaultModel, "grok")) {
-    pushUnique(items, {
-      id: c.grok.defaultModel,
-      label: `Grok (${c.grok.defaultModel})`,
+      aliases: ALIASES.gemini,
+    },
+    {
+      id: "grok",
+      label: PROVIDER_LABEL.grok,
       provider: "grok",
       tier: "balanced",
-      aliases: [],
-    });
-  }
-  return items;
+      aliases: ALIASES.grok,
+    },
+  ];
 }
 
 export function findCatalogModel(raw?: string | null): CatalogModel | undefined {
-  if (!raw) return undefined;
-  const q = raw.trim().toLowerCase();
-  return catalog().find((m) => m.id.toLowerCase() === q || m.aliases.some((a) => a.toLowerCase() === q));
+  const q = normalize(raw);
+  if (!q) return undefined;
+  return catalog().find((m) => m.id === q || m.aliases.includes(q));
 }
 
-export function normalizeModelId(raw?: string | null): string | undefined {
-  if (!raw) return undefined;
-  const hit = findCatalogModel(raw);
+/** Picker id for anything a client might send. Returns undefined for blank input. */
+export function normalizeModelId(raw?: string | null): PickerId | undefined {
+  const q = normalize(raw);
+  if (!q) return undefined;
+  const hit = findCatalogModel(q);
   if (hit) return hit.id;
-  const trimmed = raw.trim();
-  return trimmed || undefined;
+  // Unknown concrete ids still tell us which provider was meant (keeps old links working).
+  if (q.startsWith("gemini") || q.startsWith("gemma")) return "gemini";
+  if (q.startsWith("grok") || q.startsWith("xai") || q.startsWith("x-ai")) return "grok";
+  return "chatgpt";
 }
 
-export function inferProvider(modelId: string): Exclude<ProviderId, "mock"> {
-  const hit = findCatalogModel(modelId);
-  if (hit) return hit.provider;
-  const id = modelId.toLowerCase();
-  if (id.startsWith("grok") || id.startsWith("xai")) return "grok";
-  if (id.startsWith("gemini") || id.startsWith("gemma")) return "gemini";
-  return "openai";
-}
-
-/** Map a catalog / alias id to the id sent on the wire. */
-export function wireModelId(canonical: string): string {
-  const c = getConfig();
-  const n = canonical.trim().toLowerCase();
-  if (n === "gpt-6-luna" || n === "chatgpt-6-luna" || n === "chatgpt 6 luna" || n === "luna" || n === "chatgpt-6") {
-    return c.openai.lunaModel;
-  }
-  if (n === "gemini" || n === "gemini-flash") return c.gemini.flashModel;
-  if (n === "gemini-pro") return c.gemini.proModel;
-  if (n === "grok" || n === "xai") return c.grok.defaultModel;
-  return canonical;
+export function inferProvider(modelId: string): LiveProviderId {
+  return PROVIDER_FOR_PICKER[normalizeModelId(modelId) ?? "chatgpt"];
 }

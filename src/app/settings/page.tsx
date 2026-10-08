@@ -13,6 +13,10 @@ export default function SettingsPage() {
     configured?: boolean;
     provider?: string;
     providers?: { openai: boolean; gemini: boolean; grok: boolean };
+    models?: Record<
+      string,
+      { wireModel: string | null; source: string; problem?: string; note: string }
+    >;
   } | null>(null);
 
   useEffect(() => {
@@ -42,9 +46,9 @@ export default function SettingsPage() {
   }
 
   const providers = [
-    { id: "openai", label: "OpenAI / ChatGPT 6 Luna", ok: Boolean(ai?.providers?.openai) },
-    { id: "gemini", label: "Gemini", ok: Boolean(ai?.providers?.gemini) },
-    { id: "grok", label: "Grok (xAI)", ok: Boolean(ai?.providers?.grok) },
+    { id: "openai", label: "ChatGPT", envVar: "OPENAI_MODEL", ok: Boolean(ai?.providers?.openai) },
+    { id: "gemini", label: "Gemini", envVar: "GEMINI_MODEL", ok: Boolean(ai?.providers?.gemini) },
+    { id: "grok", label: "Grok", envVar: "GROK_MODEL", ok: Boolean(ai?.providers?.grok) },
   ];
 
   return (
@@ -56,15 +60,28 @@ export default function SettingsPage() {
 
       <h2 className="mt-8 font-serif text-2xl">Providers</h2>
       <p className="mt-1 text-sm text-mist-400">
-        Status only — never paste API keys in the browser. Configure OPENAI_API_KEY, GEMINI_API_KEY, and XAI_API_KEY on
-        the server.
+        Status only — never paste API keys in the browser. Set OPENAI_API_KEY, GEMINI_API_KEY, and/or XAI_API_KEY in .env.
+        Aether lists the models each key can actually call and picks a free-tier one; you never have to name a paid model.
       </p>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         {providers.map((p) => (
           <div key={p.id} className="rounded-2xl border border-white/5 p-4">
             <div className="text-xs uppercase tracking-wider text-mist-400">{p.label}</div>
             <div className={`mt-1 text-sm ${p.ok ? "text-gold-300" : "text-mist-400"}`}>
-              {ai?.mock ? "Mock mode (not live)" : p.ok ? "Configured" : "Key not set"}
+              {ai?.mock
+                ? "Mock mode (not live)"
+                : p.ok
+                  ? ai?.models?.[p.id]?.wireModel
+                    ? ai.models[p.id].wireModel
+                    : "Resolving model…"
+                  : "Key not set"}
+            </div>
+            <div className="mt-1 text-[11px] text-mist-500">
+              {ai?.mock
+                ? "Replies come from the built-in engine."
+                : p.ok
+                  ? ai?.models?.[p.id]?.note || ""
+                  : `Add the key, or set ${p.envVar} to a free-tier id from your dashboard.`}
             </div>
           </div>
         ))}

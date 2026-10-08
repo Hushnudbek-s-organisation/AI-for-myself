@@ -59,4 +59,28 @@ describe("config", () => {
     process.env.ALLOW_DEMO_ACCOUNTS = "false";
     expect(getConfig().allowDemoAccounts).toBe(false);
   });
+
+  it("ships no model id at all — free ids are resolved from the key, never hardcoded", () => {
+    delete process.env.OPENAI_MODEL;
+    delete process.env.AI_MODEL_DEFAULT;
+    delete process.env.GEMINI_MODEL;
+    delete process.env.GEMINI_MODEL_DEFAULT;
+    delete process.env.GROK_MODEL;
+    delete process.env.XAI_MODEL;
+    const c = getConfig();
+    expect(c.models).toEqual({ openai: "", gemini: "", grok: "" });
+    const serialized = JSON.stringify(c);
+    expect(serialized).not.toMatch(/gpt-6-luna|gpt-5\.5|gpt-6-astra|grok-4\.7|gemini-2\.5-pro|gemini-2\.5-flash/);
+  });
+
+  it("reads optional free-tier overrides only when the operator sets them", () => {
+    process.env.AI_MOCK_MODE = "false";
+    delete process.env.OPENAI_MODEL;
+    process.env.GEMINI_MODEL = "gemini-2.0-flash";
+    process.env.GROK_MODEL = "grok-3-mini";
+    expect(getConfig().models.gemini).toBe("gemini-2.0-flash");
+    expect(getConfig().models.grok).toBe("grok-3-mini");
+    expect(getConfig().models.openai).toBe("");
+    expect(publicAiStatus().model).toBeNull();
+  });
 });

@@ -6,9 +6,11 @@ import { AetherError } from "../errors";
 import {
   backoff,
   httpStatusError,
-  isTransientProviderError,
+  isRetryableProviderError,
   iterateSseJson,
   mergeAbort,
+  requireWireModel,
+  safeErrorText,
   userSafeProviderError,
 } from "./shared";
 
@@ -66,8 +68,8 @@ export function createGeminiProvider(): ModelProvider | null {
     },
     async *generate(params: GenerateParams): AsyncIterable<GenerateChunk> {
       const started = Date.now();
-      const model =
-        params.model && params.model !== "aether-engine-v1" ? params.model : cfg.gemini.defaultModel;
+      // The router already resolved a free-tier id this key can call. Never guess here.
+      const model = requireWireModel(params.model, "gemini");
       const signal = mergeAbort(params.timeoutMs, params.abort);
       const url = `${base}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
       const body = {
@@ -91,8 +93,9 @@ export function createGeminiProvider(): ModelProvider | null {
             signal,
           });
           if (!res.ok) {
-            const msg = httpStatusError(res.status);
-            const transient = res.status >= 500 || res.status === 429;
+            const body = await safeErrorText(res);
+            const msg = httpStatusError(res.status, body, "gemini");
+            const transient = !/cannot use that model|rejected the configured credentials/.test(msg) && (res.status >= 500 || res.status === 429);
             if (transient && attempt <= max + 1) {
               await backoff(attempt);
               continue;
@@ -132,13 +135,12 @@ export function createGeminiProvider(): ModelProvider | null {
             yield { type: "error", error: "cancelled" };
             return;
           }
-          const msg = e instanceof Error ? e.message : "provider error";
-          if (isTransientProviderError(msg) && attempt <= max + 1) {
+          if (isRetryableProviderError(e) && attempt <= max + 1) {
             await backoff(attempt);
             continue;
           }
           log("error", "gemini.generate_failed", { attempt });
-          yield { type: "error", error: userSafeProviderError(e) };
+          yield { type: "error", error: userSafeProviderError(e, "gemini") };
           return;
         }
       }

@@ -54,3 +54,15 @@ This audit was performed against the existing Next.js implementation **before** 
 13. Health endpoint always `{ok:true}` and runs seed (side effect).
 14. No request IDs / structured logs; provider errors can leak.
 15. `sql.js` unused; `pdf-parse` listed in next.config but not installed.
+
+## Update — free-key model resolution (2026-10-08)
+
+Defect **1** above ("silent fallback to builtin") and the hardcoded paid model defaults it shipped with are now closed:
+
+| Before | Now |
+| --- | --- |
+| Paid/fictional defaults baked into config (`gpt-6-luna`, `gpt-5.5`, `grok-4.7`, `gemini-2.5-pro`). | No model id in the repo. The picker is `chatgpt` / `gemini` / `grok`. |
+| A key that could not call the configured model 401/404s at generate time. | The gateway lists that key's own models (`GET /models`, 4 s timeout, fails soft) and sends the cheapest/fastest id the account actually returned. |
+| Missing/unusable model silently degraded or 404'd. | `503 model_unavailable` naming the env var to set (`OPENAI_MODEL` / `GEMINI_MODEL` / `GROK_MODEL`). Never mock, never a guessed paid id. |
+
+Optional overrides exist for pinning a free-tier id from a provider dashboard; they are documented as optional in `.env.example` and are never required. Keys stay in `.env` only, and `/api/health` + `/api/v1/models` expose the resolved wire id — never the key.

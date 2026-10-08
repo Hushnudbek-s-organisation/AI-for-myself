@@ -22,6 +22,7 @@ const PUBLIC_CODES = new Set([
   "skill_rejected",
   "file_too_large",
   "ai_unconfigured",
+  "model_unavailable",
   "generation_error",
   "misconfigured",
 ]);
