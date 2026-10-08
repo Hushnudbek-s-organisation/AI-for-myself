@@ -6,7 +6,7 @@ import { Mark } from "@/components/Mark";
 import type { ModeId, Skill } from "@/core/types";
 import { listModes } from "@/core/modes";
 
-type PublicModel = { id: string; label: string; provider: string; available: boolean };
+type PublicModel = { id: string; label: string; provider: string; available: boolean; wireModel?: string | null };
 
 export default function PlaygroundPage() {
   const modes = listModes();
@@ -79,7 +79,7 @@ export default function PlaygroundPage() {
           {models.map((m) => (
             <option key={`${m.provider}-${m.id}`} value={m.id} disabled={!m.available}>
               {m.label}
-              {!m.available ? " (key not set)" : ""}
+              {!m.available ? " (key not set)" : m.wireModel ? ` · ${m.wireModel}` : ""}
             </option>
           ))}
         </select>

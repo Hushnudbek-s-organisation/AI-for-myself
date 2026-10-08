@@ -125,7 +125,7 @@ export async function* runChat(
     const skill = resolveSkill(auth, req, conv.skillId);
     const modeId = (req.mode || skill?.mode || conv.mode || "general") as ModeId;
     const mode = getMode(modeId);
-    const resolved = resolveProvider(req.model || conv.model);
+    const resolved = await resolveProvider(req.model || conv.model);
     const { provider, mock, catalogId } = resolved;
     const model = resolved.model;
     enforceProject(auth, modeId, skill, catalogId);

@@ -26,16 +26,20 @@ function gp(model: string): GenerateParams {
   };
 }
 
-async function collect(gen: AsyncIterable<{ type: string; text?: string; error?: string; usage?: { provider?: string } }>) {
+async function collect(gen: AsyncIterable<{ type: string; text?: string; error?: string; usage?: { provider?: string; model?: string } }>) {
   const tokens: string[] = [];
   let error: string | undefined;
   let provider: string | undefined;
+  let model: string | undefined;
   for await (const c of gen) {
     if (c.type === "token" && c.text) tokens.push(c.text);
     if (c.type === "error") error = c.error;
-    if (c.type === "usage") provider = c.usage?.provider;
+    if (c.type === "usage") {
+      provider = c.usage?.provider;
+      model = c.usage?.model;
+    }
   }
-  return { text: tokens.join(""), error, provider };
+  return { text: tokens.join(""), error, provider, model };
 }
 
 describe("gemini / grok adapters", () => {
@@ -43,6 +47,7 @@ describe("gemini / grok adapters", () => {
   const snap = {
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     XAI_API_KEY: process.env.XAI_API_KEY,
+    AI_MAX_RETRIES: process.env.AI_MAX_RETRIES,
   };
 
   afterEach(() => {
@@ -51,6 +56,8 @@ describe("gemini / grok adapters", () => {
     else process.env.GEMINI_API_KEY = snap.GEMINI_API_KEY;
     if (snap.XAI_API_KEY === undefined) delete process.env.XAI_API_KEY;
     else process.env.XAI_API_KEY = snap.XAI_API_KEY;
+    if (snap.AI_MAX_RETRIES === undefined) delete process.env.AI_MAX_RETRIES;
+    else process.env.AI_MAX_RETRIES = snap.AI_MAX_RETRIES;
   });
 
   it("merges consecutive Gemini roles and extracts deltas", () => {
@@ -84,21 +91,25 @@ describe("gemini / grok adapters", () => {
     const out = await collect(p!.generate(gp("gemini-2.5-flash")));
     expect(out.text).toBe("Hello from Gemini");
     expect(out.provider).toBe("gemini");
+    expect(out.model).toBe("gemini-2.5-flash");
     expect(out.error).toBeUndefined();
   });
 
-  it("streams Grok Chat Completions SSE", async () => {
+  it("streams Grok Chat Completions SSE with the resolved free id", async () => {
     process.env.XAI_API_KEY = "test-xai";
-    globalThis.fetch = (async () =>
-      new Response(
+    let sentBody = "";
+    globalThis.fetch = (async (_u: RequestInfo | URL, init?: RequestInit) => {
+      sentBody = String(init?.body ?? "");
+      return new Response(
         'data: {"choices":[{"delta":{"content":"Hello from Grok"}}]}\n\ndata: {"choices":[],"usage":{"prompt_tokens":2,"completion_tokens":4}}\n\n',
         { status: 200, headers: { "Content-Type": "text/event-stream" } },
-      )) as typeof fetch;
+      );
+    }) as typeof fetch;
     const p = createGrokProvider();
-    expect(p).not.toBeNull();
-    const out = await collect(p!.generate(gp("grok-4.7")));
+    const out = await collect(p!.generate(gp("grok-3-mini")));
     expect(out.text).toBe("Hello from Grok");
     expect(out.provider).toBe("grok");
+    expect(JSON.parse(sentBody).model).toBe("grok-3-mini");
   });
 
   it("maps Gemini 401 to a user-safe message", async () => {
@@ -108,5 +119,43 @@ describe("gemini / grok adapters", () => {
     const out = await collect(p!.generate(gp("gemini-2.5-flash")));
     expect(out.error).toMatch(/credentials/i);
     expect(out.error).not.toMatch(/nope/i);
+  });
+
+  it("surfaces a Gemini model_not_found as an actionable env-var message, never a mock reply", async () => {
+    process.env.GEMINI_API_KEY = "free-key";
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: { code: 404, message: "models/gpt-6-luna is not found for API key" } }), {
+        status: 404,
+      })) as typeof fetch;
+    const p = createGeminiProvider();
+    const out = await collect(p!.generate(gp("some-paid-id")));
+    expect(out.error).toMatch(/GEMINI_MODEL/);
+    expect(out.error).toMatch(/free tier/i);
+    expect(out.text).toBe("");
+    expect(out.provider).toBeUndefined();
+  });
+
+  it("surfaces an xAI billing 403 as the same actionable message", async () => {
+    process.env.XAI_API_KEY = "free-key";
+    process.env.AI_MAX_RETRIES = "0";
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ error: { message: "Your team does not have access to this model. Add credits." } }), {
+        status: 403,
+      });
+    }) as typeof fetch;
+    const p = createGrokProvider();
+    const out = await collect(p!.generate(gp("grok-4-fast")));
+    expect(out.error).toMatch(/GROK_MODEL/);
+    expect(out.error).not.toMatch(/credits|401|403/);
+    expect(calls).toBe(1);
+  });
+
+  it("never invents a default wire id when the router supplies none", async () => {
+    process.env.XAI_API_KEY = "free-key";
+    globalThis.fetch = (async () => new Response("should not be called", { status: 200 })) as typeof fetch;
+    const p = createGrokProvider();
+    await expect(collect(p!.generate(gp("")))).rejects.toThrow(/GROK_MODEL/);
   });
 });

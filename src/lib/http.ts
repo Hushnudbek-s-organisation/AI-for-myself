@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { errorBody } from "@/core/errors";
+import { AetherError, errorBody, isPublicError } from "@/core/errors";
 
 export function jsonOk(data: unknown, status = 200) {
   return NextResponse.json(data, { status });
@@ -8,6 +8,14 @@ export function jsonOk(data: unknown, status = 200) {
 export function jsonError(err: unknown) {
   const { error, status } = errorBody(err);
   return NextResponse.json({ error }, { status });
+}
+
+/** Public, already user-safe platform errors (503 "set OPENAI_MODEL", 403, …) stay readable. */
+function streamErrorMessage(err: unknown): string {
+  if (err instanceof AetherError && isPublicError(err.code)) return err.message;
+  if (process.env.NODE_ENV === "production") return "The AI service is temporarily unavailable. Please try again.";
+  const message = err instanceof Error ? err.message : "stream error";
+  return /api key|secret|token|password/i.test(message) ? "stream error" : message;
 }
 
 export function sse(
@@ -31,11 +39,7 @@ export function sse(
           controller.enqueue(encoder.encode(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`));
         }
       } catch (e) {
-        const message = e instanceof Error ? e.message : "stream error";
-        const safe =
-          process.env.NODE_ENV === "production"
-            ? "The AI service is temporarily unavailable. Please try again."
-            : message;
+        const safe = streamErrorMessage(e);
         try {
           controller.enqueue(
             encoder.encode(`event: error\ndata: ${JSON.stringify({ type: "error", error: safe })}\n\n`),

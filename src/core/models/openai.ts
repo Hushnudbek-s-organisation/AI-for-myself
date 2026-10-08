@@ -4,7 +4,7 @@ import { redactSecrets } from "../security";
 import { getConfig } from "../config";
 import { log } from "../log";
 import { AetherError } from "../errors";
-import { backoff, isTransientProviderError, mergeAbort, userSafeProviderError } from "./shared";
+import { backoff, isRetryableProviderError, mergeAbort, requireWireModel, userSafeProviderError } from "./shared";
 
 export function createOpenAIProvider(): ModelProvider | null {
   const cfg = getConfig();
@@ -29,8 +29,8 @@ export function createOpenAIProvider(): ModelProvider | null {
     },
     async *generate(params: GenerateParams): AsyncIterable<GenerateChunk> {
       const started = Date.now();
-      const model =
-        params.model && params.model !== "aether-engine-v1" ? params.model : cfg.models.default;
+      // The router already resolved a free-tier id this key can call. Never guess here.
+      const model = requireWireModel(params.model, "openai");
       const signal = mergeAbort(params.timeoutMs, params.abort);
       const input = params.assembled.messages
         .filter((m) => m.role === "user" || m.role === "assistant")
@@ -100,13 +100,12 @@ export function createOpenAIProvider(): ModelProvider | null {
             yield { type: "error", error: "cancelled" };
             return;
           }
-          const msg = e instanceof Error ? e.message : "provider error";
-          if (isTransientProviderError(msg) && attempt <= max + 1) {
+          if (isRetryableProviderError(e) && attempt <= max + 1) {
             await backoff(attempt);
             continue;
           }
           log("error", "openai.generate_failed", { attempt });
-          yield { type: "error", error: userSafeProviderError(e) };
+          yield { type: "error", error: userSafeProviderError(e, "openai") };
           return;
         }
       }

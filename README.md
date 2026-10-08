@@ -25,15 +25,28 @@ Two explicit modes. Production never silently falls back to mock AI.
 | **Real** | `AI_MOCK_MODE=false` and at least one of `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`. |
 | **Mock** | `AI_MOCK_MODE=true`. Rule-based **development fallback** (Aether Engine). Not a production model. |
 
-Pick a model in chat or `POST /v1/chat` `{ "model": "gpt-6-luna" }`. Catalog aliases:
+The chat picker — and `POST /v1/chat` `{ "model": "chatgpt" }` — names **providers**, never model ids:
 
-| Catalog id | Provider | Notes |
+| Picker id | Provider | Wire call |
 | --- | --- | --- |
-| `gpt-6-luna` | OpenAI | ChatGPT 6 Luna. Wire id: `OPENAI_MODEL_LUNA`. Responses API, `store: false`. |
-| `gemini-2.5-flash` / `gemini-2.5-pro` | Gemini | Google AI Studio `generateContent` stream. |
-| `grok-4.7` | Grok | xAI `https://api.x.ai/v1/chat/completions`. |
+| `chatgpt` | ChatGPT (OpenAI) | Responses API `responses.create`, `store: false`. |
+| `gemini` | Gemini | Google AI Studio `streamGenerateContent` (SSE). |
+| `grok` | Grok (xAI) | `https://api.x.ai/v1/chat/completions` (SSE). |
 
-Env vars remap wire IDs so this repo does not invent account-specific model names.
+**No paid model names are required, and none are hardcoded.** After a key is set, Aether lists that account's own models
+(`GET /models` for OpenAI and xAI, `GET {GEMINI_BASE_URL}/models` for Gemini) and sends the cheapest/fastest id that came
+back — a free-tier `…-mini` / `…-nano` / `…-flash` style id, whatever your dashboard actually offers. If the list is empty,
+chat returns **503** with the env var to set; it never falls back to mock and never guesses a paid id.
+
+Optional overrides, for pinning an exact free-tier id copied from your provider dashboard:
+
+| Env var | Purpose |
+| --- | --- |
+| `OPENAI_MODEL` | Pin the OpenAI wire id (optional). |
+| `GEMINI_MODEL` | Pin the Gemini wire id (optional). |
+| `GROK_MODEL` | Pin the Grok wire id (optional). |
+
+Keys live in `.env` only. `GET /api/health` and `GET /api/v1/models` show the resolved wire id per provider — never the key.
 
 ## Quick start
 
@@ -72,7 +85,7 @@ POST /v1/chat
 Authorization: Bearer aether_sk_…
 Content-Type: application/json
 
-{ "message": "Hello", "mode": "general", "model": "gpt-6-luna" }
+{ "message": "Hello", "mode": "general", "model": "chatgpt" }
 ```
 
 Keys are hashed at rest (SHA-256). Copy the plaintext once at creation. Docs: `/docs`. Developer: `/developer`.
