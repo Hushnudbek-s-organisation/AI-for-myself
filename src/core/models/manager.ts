@@ -142,6 +142,8 @@ function instantiate(id: LiveProviderId): ModelProvider | null {
 
 export interface ResolvedProvider {
   provider: ModelProvider;
+  /** The provider selected by the router, used to report failures with its own env var. */
+  providerId: LiveProviderId | "mock";
   /** Wire id sent to the provider — resolved from the key's live model list or an env override. */
   model: string;
   /** Picker id, stored on the conversation and shown in the UI. */
@@ -159,6 +161,7 @@ export async function resolveProvider(model?: string | null): Promise<ResolvedPr
   if (mode === "mock") {
     return {
       provider: builtinProvider,
+      providerId: "mock",
       model: "aether-engine-v1",
       catalogId: "aether-engine-v1",
       mock: true,
@@ -175,7 +178,14 @@ export async function resolveProvider(model?: string | null): Promise<ResolvedPr
   }
 
   const resolution = await resolveWireModel(providerId);
-  return { provider: live, model: resolution.wireModel, catalogId, mock: false, source: resolution.source };
+  return {
+    provider: live,
+    providerId,
+    model: resolution.wireModel,
+    catalogId,
+    mock: false,
+    source: resolution.source,
+  };
 }
 
 export function defaultModel(): PickerId | "aether-engine-v1" {

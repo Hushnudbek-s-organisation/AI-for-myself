@@ -1,5 +1,5 @@
 import { MODEL_ENV_VAR, PROVIDER_LABEL, getConfig, type LiveProviderId } from "../config";
-import { AetherError } from "../errors";
+import { AetherError, isPublicError } from "../errors";
 import { log } from "../log";
 
 /**
@@ -14,10 +14,50 @@ export function modelAccessMessage(provider: LiveProviderId): string {
   );
 }
 
+export type FailureProviderId = LiveProviderId | "mock";
+
+function failureProviderLabel(provider: FailureProviderId): string {
+  return provider === "mock" ? "Aether's local mock provider" : PROVIDER_LABEL[provider];
+}
+
+/** A user-safe summary for provider failures; never includes provider response text or credentials. */
+export function providerFailureMessage(
+  provider: FailureProviderId,
+  kind: "rejected" | "unavailable",
+  status?: number,
+): string {
+  const statusText = status && Number.isFinite(status) ? ` (HTTP ${status})` : "";
+  if (provider === "mock") {
+    return kind === "rejected"
+      ? `${failureProviderLabel(provider)} rejected the request${statusText}. Check the request and retry.`
+      : `${failureProviderLabel(provider)} could not complete the request${statusText}. Check the server logs and retry.`;
+  }
+
+  const label = PROVIDER_LABEL[provider];
+  const envVar = MODEL_ENV_VAR[provider];
+  if (kind === "rejected") {
+    const target = status === 401 || status === 403 ? "the configured credentials" : "the request";
+    return (
+      `${label} rejected ${target}${statusText}. Check that ${envVar} is a model id this account can actually call ` +
+      `and that the key is valid. Aether will not switch model or fall back to mock.`
+    );
+  }
+  return (
+    `${label} could not be reached${statusText}. This is usually a provider outage, a network block, or an over-long prompt — ` +
+    `retry shortly. If it keeps happening, check that the ${label} key and ${envVar} match your free-tier account. ` +
+    `Aether never falls back to mock.`
+  );
+}
+
+function providerTimeoutMessage(provider: FailureProviderId): string {
+  return `${failureProviderLabel(provider)} timed out. Shorten the message, or raise AI_TIMEOUT_MS in .env.`;
+}
+
 const MODEL_DENIED = /model[_ -]?not[_ -]?found|unknown[_ -]?model|invalid[_ -]?model|model .*(does not exist|not found|is not)|unsupported[_ -]?model|no such model|not available on this/i;
 const BILLING = /insufficient[_ -]?quota|billing|credit balance|prepaid|payment required|not entitled|no access to|does not have access|subscription|upgrade your plan|free tier limit/i;
 
 function errorText(err: unknown): string {
+  if (typeof err === "string") return err.toLowerCase();
   const e = (err ?? {}) as {
     message?: unknown;
     code?: unknown;
@@ -25,14 +65,14 @@ function errorText(err: unknown): string {
     param?: unknown;
     status?: unknown;
     error?: unknown;
-    response?: { status?: unknown; data?: unknown; body?: unknown };
+    response?: { status?: unknown; data?: unknown; body?: unknown; error?: unknown };
   };
   const parts: string[] = [];
   if (typeof e.message === "string") parts.push(e.message);
   if (typeof e.code === "string") parts.push(e.code);
   if (typeof e.type === "string") parts.push(e.type);
   if (typeof e.param === "string") parts.push(e.param);
-  const nested = (e.error ?? (e.response?.data ?? e.response?.body)) as
+  const nested = (e.error ?? e.response?.error ?? (e.response?.data ?? e.response?.body)) as
     | { code?: unknown; type?: unknown; message?: unknown }
     | string
     | undefined;
@@ -48,52 +88,82 @@ function errorText(err: unknown): string {
 function errorStatus(err: unknown): number | undefined {
   const e = (err ?? {}) as {
     status?: unknown;
-    response?: { status?: unknown };
-    error?: { status?: unknown };
+    response?: { status?: unknown; error?: { status?: unknown; code?: unknown } };
+    error?: { status?: unknown; code?: unknown };
   };
-  for (const v of [e.status, e.response?.status, e.error?.status]) {
+  for (const v of [
+    e.status,
+    e.response?.status,
+    e.response?.error?.status,
+    e.response?.error?.code,
+    e.error?.status,
+    e.error?.code,
+  ]) {
     if (typeof v === "number" && Number.isFinite(v)) return v;
   }
-  const m = errorText(err);
-  const m404 = /\b404\b/.exec(m);
-  if (m404) return 404;
-  const m401 = /\b401\b/.exec(m);
-  if (m401) return 401;
-  const m429 = /\b429\b/.exec(m);
-  if (m429) return 429;
-  return undefined;
+  const status = /\b([45]\d{2})\b/.exec(errorText(err));
+  return status ? Number(status[1]) : undefined;
 }
 
 /**
- * User-safe provider error. Model / billing problems are reported as such so the
- * operator knows exactly which env var to set.
+ * User-safe provider error. Model / billing problems retain their dedicated
+ * guidance; all other failures name the provider and the next operator action.
  */
 export function userSafeProviderError(err: unknown, provider: LiveProviderId): string {
   const text = errorText(err);
   const status = errorStatus(err);
-  if (status === 404 || MODEL_DENIED.test(text)) return modelAccessMessage(provider);
-  if (status === 402 || BILLING.test(text)) return modelAccessMessage(provider);
-  if (status === 429 || /rate limit|too many requests/.test(text)) {
-    return "The AI service is rate limiting requests. Try again shortly.";
+  if (status === 404 || (MODEL_DENIED.test(text) && (status === undefined || status < 500))) {
+    return modelAccessMessage(provider);
   }
-  if (status === 401 || status === 403 || /api key|incorrect api key|invalid_api_key|unauthorized|permission denied/.test(text)) {
-    return "The AI service rejected the configured credentials.";
+  if (status === 402 || (BILLING.test(text) && (status === undefined || status < 500))) {
+    return modelAccessMessage(provider);
   }
-  if (/timeout|aborted|abort|etimedout/.test(text)) {
-    return "The AI service timed out.";
+  if (/timeout|timed out|deadline exceeded|aborted|abort|etimedout/.test(text)) {
+    return providerTimeoutMessage(provider);
   }
-  return "The AI service is temporarily unavailable. Please try again.";
+  if (status !== undefined && status >= 400 && status < 500) {
+    return providerFailureMessage(provider, "rejected", status);
+  }
+  if (status !== undefined && status >= 500) {
+    return providerFailureMessage(provider, "unavailable", status);
+  }
+  if (/rate limit|too many requests/.test(text)) {
+    return providerFailureMessage(provider, "rejected", 429);
+  }
+  if (/api key|incorrect api key|invalid_api_key|unauthorized|permission denied/.test(text)) {
+    return providerFailureMessage(provider, "rejected");
+  }
+  return providerFailureMessage(provider, "unavailable");
 }
 
 /** Same mapping for providers that answer with a raw HTTP status (Gemini, xAI). */
 export function httpStatusError(status: number, body = "", provider: LiveProviderId): string {
   const text = body.toLowerCase();
-  if (status === 404 || MODEL_DENIED.test(text)) return modelAccessMessage(provider);
-  if (status === 402 || BILLING.test(text)) return modelAccessMessage(provider);
-  if (status === 429) return "The AI service is rate limiting requests. Try again shortly.";
-  if (status === 401 || status === 403) return "The AI service rejected the configured credentials.";
-  if (status >= 500) return "The AI service is temporarily unavailable. Please try again.";
-  return "The AI service is temporarily unavailable. Please try again.";
+  if (status === 404 || (MODEL_DENIED.test(text) && status < 500)) return modelAccessMessage(provider);
+  if (status === 402 || (BILLING.test(text) && status < 500)) return modelAccessMessage(provider);
+  if (/timeout|timed out|deadline exceeded|aborted|abort|etimedout/.test(text)) {
+    return providerTimeoutMessage(provider);
+  }
+  if (status >= 400 && status < 500) return providerFailureMessage(provider, "rejected", status);
+  return providerFailureMessage(provider, "unavailable", status);
+}
+
+/** Keep explicit platform errors intact; sanitize all unexpected provider exceptions. */
+export function userSafeFailureMessage(err: unknown, provider: FailureProviderId): string {
+  if (err instanceof AetherError && isPublicError(err.code)) return err.message;
+  if (provider === "mock") {
+    const text = errorText(err);
+    if (/timeout|timed out|deadline exceeded|aborted|abort|etimedout/.test(text)) {
+      return providerTimeoutMessage(provider);
+    }
+    const status = errorStatus(err);
+    return providerFailureMessage(
+      provider,
+      status !== undefined && status >= 400 && status < 500 ? "rejected" : "unavailable",
+      status,
+    );
+  }
+  return userSafeProviderError(err, provider);
 }
 
 /** Read a provider error body without ever letting it break the stream. */

@@ -75,8 +75,8 @@ export function createOpenAIProvider(): ModelProvider | null {
                   outputTokens: u.output_tokens ?? 0,
                 };
               }
-            } else if (type === "error") {
-              yield { type: "error", error: "The AI service is temporarily unavailable. Please try again." };
+            } else if (type === "error" || type === "response.failed") {
+              yield { type: "error", error: userSafeProviderError(event, "openai") };
               return;
             }
           }

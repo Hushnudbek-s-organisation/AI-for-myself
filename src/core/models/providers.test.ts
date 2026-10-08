@@ -152,6 +152,34 @@ describe("gemini / grok adapters", () => {
     expect(calls).toBe(1);
   });
 
+  it("maps mid-stream Gemini and Grok error frames without leaking their bodies", async () => {
+    process.env.GEMINI_API_KEY = "free-gemini";
+    process.env.XAI_API_KEY = "free-xai";
+    process.env.AI_MAX_RETRIES = "0";
+
+    globalThis.fetch = (async () =>
+      new Response('data: {"error":{"code":400,"message":"private Gemini api_key=secret-value"}}\n\n', {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      })) as typeof fetch;
+    const gemini = await collect(createGeminiProvider()!.generate(gp("gemini-2.5-flash")));
+    expect(gemini.error).toContain("Gemini rejected the request (HTTP 400)");
+    expect(gemini.error).toContain("GEMINI_MODEL");
+    expect(gemini.text).toBe("");
+    expect(gemini.error).not.toMatch(/private Gemini|secret-value|api_key/i);
+
+    globalThis.fetch = (async () =>
+      new Response('data: {"error":{"status":500,"message":"private Grok api_key=secret-value"}}\n\n', {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      })) as typeof fetch;
+    const grok = await collect(createGrokProvider()!.generate(gp("grok-3-mini")));
+    expect(grok.error).toContain("Grok could not be reached (HTTP 500)");
+    expect(grok.error).toContain("GROK_MODEL");
+    expect(grok.text).toBe("");
+    expect(grok.error).not.toMatch(/private Grok|secret-value|api_key/i);
+  });
+
   it("never invents a default wire id when the router supplies none", async () => {
     process.env.XAI_API_KEY = "free-key";
     globalThis.fetch = (async () => new Response("should not be called", { status: 200 })) as typeof fetch;

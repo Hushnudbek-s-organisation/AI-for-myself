@@ -93,6 +93,14 @@ export function createGrokProvider(): ModelProvider | null {
               yield { type: "error", error: "cancelled" };
               return;
             }
+            if (
+              event &&
+              typeof event === "object" &&
+              ("error" in event || ("type" in event && (event as { type?: unknown }).type === "error"))
+            ) {
+              yield { type: "error", error: userSafeProviderError(event, "grok") };
+              return;
+            }
             const delta = grokDeltaText(event);
             if (delta) yield { type: "token", text: redactSecrets(delta) };
             const u = grokUsage(event);
