@@ -57,8 +57,10 @@ describe("model manager", () => {
     expect(g.model).toBe("gemini-2.5-flash");
     const x = resolveProvider("grok-4.7");
     expect(x.provider.id).toBe("grok");
-    const luna = resolveProvider("chatgpt-6-luna");
+    const luna = resolveProvider("chatgpt");
     expect(luna.provider.id).toBe("openai");
-    expect(luna.catalogId).toBe("gpt-6-luna");
+    expect(luna.catalogId).toBe("chatgpt");
+    expect(resolveProvider("gemini").catalogId).toBe("gemini");
+    expect(resolveProvider("grok").catalogId).toBe("grok");
   });
 });

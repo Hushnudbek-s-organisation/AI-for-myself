@@ -36,7 +36,17 @@ type PublicModel = {
   provider: string;
   available: boolean;
   mock?: boolean;
+  aliases?: string[];
 };
+
+function matchModel(raw: string | undefined, list: PublicModel[]): string {
+  if (!raw) return list.find((m) => m.available)?.id || "";
+  const q = raw.toLowerCase();
+  const hit = list.find(
+    (m) => m.id.toLowerCase() === q || (m.aliases || []).some((a) => a.toLowerCase() === q),
+  );
+  return hit?.id || raw;
+}
 
 const NAV = [
   { href: "/chat", label: "Chats" },
@@ -105,7 +115,7 @@ export function ChatApp({ initialId }: { initialId?: string }) {
     setPrompts(p.prompts || []);
     const catalog: PublicModel[] = m.models || [];
     setModels(catalog);
-    setModel((prev) => prev || m.defaultModel || catalog.find((x) => x.available)?.id || "");
+    setModel((prev) => matchModel(prev || m.defaultModel, catalog));
   }, []);
 
   useEffect(() => {
@@ -473,10 +483,10 @@ export function ChatApp({ initialId }: { initialId?: string }) {
               ))}
           </select>
           <select
-            value={model}
+            value={matchModel(model, models) || model}
             onChange={(e) => setModel(e.target.value)}
             className="max-w-[14rem] rounded-full border border-iris-400/25 bg-ink-850 px-3 py-1.5 text-sm outline-none"
-            title="Model — routed through Aether, never called from the browser"
+            title="ChatGPT, Gemini, or Grok — routed through Aether, never called from the browser"
           >
             {models.length === 0 && <option value="">Default model</option>}
             {models.map((m) => (

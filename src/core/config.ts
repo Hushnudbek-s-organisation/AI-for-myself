@@ -29,7 +29,7 @@ export interface AppConfig {
   openaiApiKey: string;
   openaiBaseUrl: string;
   openai: {
-    lunaModel: string;
+    defaultModel: string;
   };
   gemini: {
     apiKey: string;
@@ -59,6 +59,12 @@ export function getConfig(): AppConfig {
   const openaiApiKey = process.env.OPENAI_API_KEY || "";
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
   const grokKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY || "";
+  const openaiDefault =
+    process.env.OPENAI_MODEL ||
+    process.env.OPENAI_MODEL_LUNA ||
+    process.env.CHATGPT_6_LUNA_MODEL ||
+    process.env.AI_MODEL_DEFAULT ||
+    "gpt-6-luna";
   const geminiDefault = process.env.GEMINI_MODEL || process.env.GEMINI_MODEL_DEFAULT || "gemini-2.5-flash";
   const grokDefault = process.env.GROK_MODEL || process.env.XAI_MODEL || "grok-4.7";
   return {
@@ -69,7 +75,7 @@ export function getConfig(): AppConfig {
     openaiApiKey,
     openaiBaseUrl: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
     openai: {
-      lunaModel: process.env.OPENAI_MODEL_LUNA || process.env.CHATGPT_6_LUNA_MODEL || "gpt-6-luna",
+      defaultModel: openaiDefault,
     },
     gemini: {
       apiKey: geminiKey,
@@ -84,16 +90,9 @@ export function getConfig(): AppConfig {
       defaultModel: grokDefault,
     },
     models: {
-      default:
-        process.env.AI_MODEL_DEFAULT ||
-        process.env.OPENAI_MODEL ||
-        "gpt-5.5",
-      fast: process.env.AI_MODEL_FAST || process.env.AI_MODEL_DEFAULT || process.env.OPENAI_MODEL || "gpt-5.5",
-      reasoning:
-        process.env.AI_MODEL_REASONING ||
-        process.env.AI_MODEL_DEFAULT ||
-        process.env.OPENAI_MODEL ||
-        "gpt-5.5",
+      default: openaiDefault,
+      fast: process.env.AI_MODEL_FAST || openaiDefault,
+      reasoning: process.env.AI_MODEL_REASONING || openaiDefault,
     },
     timeoutMs: Number(process.env.AI_TIMEOUT_MS || 60_000),
     maxRetries: Number(process.env.AI_MAX_RETRIES || 2),
@@ -193,8 +192,7 @@ export function publicAiStatus(): {
   }
   const live = defaultLiveProvider();
   if (live) {
-    const model =
-      live === "openai" ? c.models.default : live === "gemini" ? c.gemini.defaultModel : c.grok.defaultModel;
+    const model = live === "openai" ? "chatgpt" : live === "gemini" ? "gemini" : "grok";
     return { provider: live, providers, mock: false, configured: true, model };
   }
   return { provider: "unconfigured", providers, mock: false, configured: false, model: c.models.default };

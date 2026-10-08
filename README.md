@@ -13,7 +13,7 @@ Browser / other apps
         ↓
  Model router (never called from the browser)
         ↓
- OpenAI Responses  ·  Gemini generateContent  ·  xAI Grok
+ ChatGPT  ·  Gemini  ·  Grok
 ```
 
 ## Modes
@@ -22,27 +22,25 @@ Two explicit modes. Production never silently falls back to mock AI.
 
 | Mode | How |
 | --- | --- |
-| **Real** | `AI_MOCK_MODE=false` and at least one of `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`. |
-| **Mock** | `AI_MOCK_MODE=true`. Rule-based **development fallback** (Aether Engine). Not a production model. |
+| **Real** | `AI_MOCK_MODE=false` and at least one API key. |
+| **Mock** | `AI_MOCK_MODE=true`. Rule-based **development fallback**. Not a production model. |
 
-Pick a model in chat or `POST /v1/chat` `{ "model": "gpt-6-luna" }`. Catalog aliases:
+Chat picker is just **ChatGPT / Gemini / Grok**. You do not put model names in `.env` unless an account needs a specific id.
 
-| Catalog id | Provider | Notes |
+| Picker / `model` | Key | API |
 | --- | --- | --- |
-| `gpt-6-luna` | OpenAI | ChatGPT 6 Luna. Wire id: `OPENAI_MODEL_LUNA`. Responses API, `store: false`. |
-| `gemini-2.5-flash` / `gemini-2.5-pro` | Gemini | Google AI Studio `generateContent` stream. |
-| `grok-4.7` | Grok | xAI `https://api.x.ai/v1/chat/completions`. |
-
-Env vars remap wire IDs so this repo does not invent account-specific model names.
+| `chatgpt` | `OPENAI_API_KEY` | OpenAI Responses, `store: false` |
+| `gemini` | `GEMINI_API_KEY` | Google AI Studio `generateContent` |
+| `grok` | `XAI_API_KEY` | xAI `https://api.x.ai/v1/chat/completions` |
 
 ## Quick start
 
 ```bash
 npm install
 cp .env.example .env.local
-# For local UI without a provider:
+# Local UI only:
 #   AI_MOCK_MODE=true
-# For real AI (any combination):
+# Real AI — keys only:
 #   AI_MOCK_MODE=false
 #   OPENAI_API_KEY=...
 #   GEMINI_API_KEY=...
@@ -72,10 +70,10 @@ POST /v1/chat
 Authorization: Bearer aether_sk_…
 Content-Type: application/json
 
-{ "message": "Hello", "mode": "general", "model": "gpt-6-luna" }
+{ "message": "Hello", "mode": "general", "model": "chatgpt" }
 ```
 
-Keys are hashed at rest (SHA-256). Copy the plaintext once at creation. Docs: `/docs`. Developer: `/developer`.
+`model` may be `chatgpt`, `gemini`, or `grok`. Keys are hashed at rest (SHA-256). Docs: `/docs`. Developer: `/developer`.
 
 ## Database
 
@@ -92,7 +90,6 @@ Browser Speech Recognition / speechSynthesis only (`BrowserSpeechProvider`). Not
 - Strong `AETHER_SECRET`
 - `AI_MOCK_MODE=false`
 - At least one of `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`
-- Model env vars set to IDs your accounts actually have
 - `ALLOW_DEMO_ACCOUNTS` unset
 - Persistent disk for `data/`
 - Reverse proxy TLS

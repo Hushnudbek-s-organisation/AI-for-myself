@@ -42,7 +42,7 @@ export default function SettingsPage() {
   }
 
   const providers = [
-    { id: "openai", label: "OpenAI / ChatGPT 6 Luna", ok: Boolean(ai?.providers?.openai) },
+    { id: "openai", label: "ChatGPT", ok: Boolean(ai?.providers?.openai) },
     { id: "gemini", label: "Gemini", ok: Boolean(ai?.providers?.gemini) },
     { id: "grok", label: "Grok (xAI)", ok: Boolean(ai?.providers?.grok) },
   ];

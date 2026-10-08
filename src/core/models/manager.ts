@@ -133,10 +133,10 @@ function defaultModelFor(id: LiveProviderId, cfg: ReturnType<typeof getConfig>):
 export function defaultModel(): string {
   const cfg = getConfig();
   if (cfg.mockMode) return "aether-engine-v1";
-  if (cfg.openaiApiKey) return cfg.models.default;
-  if (cfg.gemini.apiKey) return cfg.gemini.defaultModel;
-  if (cfg.grok.apiKey) return cfg.grok.defaultModel;
-  return cfg.models.default;
+  if (cfg.openaiApiKey) return "chatgpt";
+  if (cfg.gemini.apiKey) return "gemini";
+  if (cfg.grok.apiKey) return "grok";
+  return "chatgpt";
 }
 
 export function isAllowedModel(requested: string | undefined | null, projectAllowed: string[]): boolean {

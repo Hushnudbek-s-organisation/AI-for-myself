@@ -56,8 +56,8 @@ export default function PlaygroundPage() {
   return (
     <AppFrame title="Playground">
       <p className="text-mist-400">
-        Test mode, skill, model, and prompt combinations against the same AI Core. The browser never talks to OpenAI,
-        Gemini, or xAI. Secrets are never shown.
+        Test mode, skill, and provider (ChatGPT / Gemini / Grok) against the same AI Core. The browser never talks to
+        those APIs. Secrets are never shown.
       </p>
       <div className="mt-6 grid gap-3 md:grid-cols-3">
         <select className="rounded-lg border border-white/10 bg-ink-850 px-3 py-2" value={mode} onChange={(e) => setMode(e.target.value as ModeId)}>

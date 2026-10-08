@@ -22,14 +22,14 @@ export default function DocsPage() {
   "message": "Check my essay",
   "mode": "essay",
   "skill": "essay-coach",
-  "model": "gpt-6-luna",
+  "model": "chatgpt",
   "conversationId": "optional",
   "context": { "degree": "Bachelor", "field": "CS" },
   "stream": false
 }`}</pre>
           <p className="mt-2 text-sm text-mist-400">
             <code>context</code> is untrusted, size-limited, and never promoted to system instructions.{" "}
-            <code>model</code> selects ChatGPT 6 Luna (<code>gpt-6-luna</code>), Gemini, or Grok. The browser and
+            <code>model</code> is <code>chatgpt</code>, <code>gemini</code>, or <code>grok</code>. The browser and
             third-party apps never call providers directly.
           </p>
           <pre className="mt-3 overflow-auto rounded-xl border border-white/10 bg-ink-900 p-4 font-mono text-xs">{`{
