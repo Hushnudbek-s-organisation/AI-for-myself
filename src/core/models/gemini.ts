@@ -110,6 +110,14 @@ export function createGeminiProvider(): ModelProvider | null {
               yield { type: "error", error: "cancelled" };
               return;
             }
+            if (
+              event &&
+              typeof event === "object" &&
+              ("error" in event || ("type" in event && (event as { type?: unknown }).type === "error"))
+            ) {
+              yield { type: "error", error: userSafeProviderError(event, "gemini") };
+              return;
+            }
             const delta = geminiDeltaText(event);
             if (delta) yield { type: "token", text: redactSecrets(delta) };
             const u = geminiUsage(event);

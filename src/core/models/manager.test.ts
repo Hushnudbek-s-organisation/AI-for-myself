@@ -48,6 +48,7 @@ describe("model manager", () => {
     process.env.AI_MOCK_MODE = "true";
     const r = await resolveProvider("chatgpt");
     expect(r.mock).toBe(true);
+    expect(r.providerId).toBe("mock");
     expect(r.provider.id).toBe("aether-builtin");
     expect(r.model).toBe("aether-engine-v1");
   });
@@ -105,6 +106,7 @@ describe("model manager", () => {
 
     const g = await resolveProvider("gemini");
     expect(g.mock).toBe(false);
+    expect(g.providerId).toBe("gemini");
     expect(g.provider.id).toBe("gemini");
     expect(g.model).toBe("gemini-2.5-flash");
 

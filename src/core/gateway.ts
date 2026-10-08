@@ -2,6 +2,7 @@ import { AetherError } from "./errors";
 import { getMode } from "./modes";
 import { assemblePrompt, titleFromMessage } from "./prompts/assembler";
 import { isAllowedModel, resolveProvider } from "./models/manager";
+import { providerFailureMessage, userSafeFailureMessage } from "./models/shared";
 import { pickToolsForRequest, runTool } from "./tools/index";
 import { validateOutput } from "./validator";
 import { sanitizeSkillInstructions } from "./security";
@@ -25,6 +26,15 @@ import { conversations, files, instructions, messages, projects, rules, skills, 
 import { parseJson } from "@/db/index";
 
 const inflight = new Set<string>();
+
+function failureCode(err: unknown): string {
+  if (err instanceof AetherError) return err.code;
+  if (err && typeof err === "object" && "code" in err) {
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === "string" && /^[a-z0-9_.-]{1,64}$/i.test(code)) return code;
+  }
+  return "provider_error";
+}
 
 function resolveSkill(auth: AuthContext, req: ChatRequest, convSkill?: string | null): Skill | undefined {
   const key = req.skillId || req.skill || convSkill || undefined;
@@ -126,7 +136,7 @@ export async function* runChat(
     const modeId = (req.mode || skill?.mode || conv.mode || "general") as ModeId;
     const mode = getMode(modeId);
     const resolved = await resolveProvider(req.model || conv.model);
-    const { provider, mock, catalogId } = resolved;
+    const { provider, providerId: activeProviderId, mock, catalogId } = resolved;
     const model = resolved.model;
     enforceProject(auth, modeId, skill, catalogId);
     if (req.model && catalogId !== conv.model) {
@@ -265,13 +275,17 @@ export async function* runChat(
           lastUsage = chunk.usage;
         } else if (chunk.type === "error") {
           failed = true;
-          failMessage = chunk.error || "The AI service is temporarily unavailable. Please try again.";
+          failMessage = chunk.error || providerFailureMessage(activeProviderId, "unavailable");
         }
       }
-    } catch {
+    } catch (e) {
       failed = true;
-      failMessage = "The AI service is temporarily unavailable. Please try again.";
-      log("error", "gateway.generate", { requestId: rid, conversationId: conv.id });
+      failMessage = userSafeFailureMessage(e, activeProviderId);
+      log("error", "gateway.generate", {
+        requestId: rid,
+        conversationId: conv.id,
+        code: failureCode(e),
+      });
     }
 
     if (failed || opts.abort?.aborted) {

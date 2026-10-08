@@ -113,6 +113,41 @@ describe("openai provider", () => {
     expect(createMock).toHaveBeenCalledTimes(1);
   });
 
+  it("maps provider error frames and failed responses to actionable messages", async () => {
+    process.env.OPENAI_API_KEY = "sk-free";
+    process.env.AI_MAX_RETRIES = "0";
+    const p = createOpenAIProvider();
+
+    createMock.mockResolvedValue(
+      sse([
+        {
+          type: "error",
+          status: 400,
+          error: { message: "private provider response api_key=secret-value" },
+        },
+      ]),
+    );
+    const rejected = await collect(p!.generate(gp("gpt-4o-mini")));
+    expect(rejected.error).toContain("ChatGPT rejected the request (HTTP 400)");
+    expect(rejected.error).toContain("OPENAI_MODEL");
+    expect(rejected.error).not.toMatch(/private provider response|secret-value|api_key/i);
+
+    createMock.mockResolvedValue(
+      sse([
+        {
+          type: "response.failed",
+          response: {
+            error: { status: 500, message: "private upstream failure api_key=secret-value" },
+          },
+        },
+      ]),
+    );
+    const unavailable = await collect(p!.generate(gp("gpt-4o-mini")));
+    expect(unavailable.error).toContain("ChatGPT could not be reached (HTTP 500)");
+    expect(unavailable.error).toContain("OPENAI_MODEL");
+    expect(unavailable.error).not.toMatch(/private upstream failure|secret-value|api_key/i);
+  });
+
   it("refuses to invent a wire id when the router supplied none", async () => {
     process.env.OPENAI_API_KEY = "sk-free";
     const p = createOpenAIProvider();
